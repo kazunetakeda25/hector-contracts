@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
 
-import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
-import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
-import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
-import '@openzeppelin/contracts/utils/math/SafeMath.sol';
-import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
+import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 
 interface IOwnable {
 	function owner() external view returns (address);
@@ -88,8 +89,6 @@ interface LockFarm {
 	function pendingReward(uint256 fnftId) external view returns (uint256 reward);
 
 	function getFnfts(address owner) external view returns (FNFTInfo[] memory infos);
-
-	function totalTokenSupply() external view returns (uint256 _totalTokenSupply);
 }
 
 // Interface of the FNFT
@@ -132,8 +131,6 @@ interface LockAddressRegistry {
 
 // Interface of the SpookySwap Liqudity ERC20
 interface SpookySwapPair {
-	function MINIMUM_LIQUIDITY() external pure returns (uint256);
-
 	function factory() external view returns (address);
 
 	function token0() external view returns (address);
@@ -148,10 +145,6 @@ interface SpookySwapPair {
 			uint112 reserve1,
 			uint32 blockTimestampLast
 		);
-
-	function price0CumulativeLast() external view returns (uint256);
-
-	function price1CumulativeLast() external view returns (uint256);
 
 	function totalSupply() external view returns (uint256);
 }
@@ -196,20 +189,20 @@ interface wsHEC {
 }
 
 // Voting Contract
-contract Voting is ReentrancyGuard, Ownable {
-	using SafeERC20 for IERC20;
-	using SafeMath for uint256;
+contract Voting is Initializable, ReentrancyGuardUpgradeable, Ownable {
+	using SafeERC20Upgradeable for IERC20Upgradeable;
+	using SafeMathUpgradeable for uint256;
 
-	IERC20 public HEC; // HEC
-	IERC20 internal sHEC; // sHEC
-	IERC20 internal USDC; // USDC
-	wsHEC internal wsHec; // wsHEC
-	SpookySwapFactory internal spookySwapFactory;
-	SpookySwapRouter internal spookySwapRouter;
+	IERC20Upgradeable public HEC; // HEC
+	IERC20Upgradeable public sHEC; // sHEC
+	IERC20Upgradeable public USDC; // USDC
+	wsHEC public wsHec; // wsHEC
+	SpookySwapFactory public spookySwapFactory;
+	SpookySwapRouter public spookySwapRouter;
 
 	struct DepositInfo {
 		address owner;
-		IERC20 stakingToken;
+		IERC20Upgradeable stakingToken;
 		uint256 depositAmount;
 		uint256 depositTime;
 	}
@@ -231,11 +224,11 @@ contract Voting is ReentrancyGuard, Ownable {
 	mapping(LockFarm => FNFT) public fnft; // Return FNFT for each LockFarm
 	mapping(LockFarm => TokenVault) public tokenVault; // Return TokenVault for each LockFarm
 	mapping(FNFT => TokenVault) public tokenVaultByFNFT; // Return TokenVault for each FNFT
-	mapping(LockFarm => IERC20) public stakingToken; // Return staking token for eack LockFarm
-	mapping(IERC20 => LockFarm) internal lockFarmByERC20; // Return staking token for each LockFarm
+	mapping(LockFarm => IERC20Upgradeable) public stakingToken; // Return staking token for eack LockFarm
+	mapping(IERC20Upgradeable => LockFarm) internal lockFarmByERC20; // Return staking token for each LockFarm
 	mapping(LockFarm => LockAddressRegistry) internal lockAddressRegistry; // Return LockAddressRegistry by LockFarm
 	mapping(FNFT => bool) internal canVoteByFNFT; // Return status of user can vote by FNFT
-	mapping(IERC20 => bool) internal canVoteByERC20; // Return status of user can vote by StakingToken
+	mapping(IERC20Upgradeable => bool) internal canVoteByERC20; // Return status of user can vote by StakingToken
 	mapping(FNFT => mapping(uint256 => uint256)) public lastVotedByFNFT; // Return last time of voted FNFT
 	FarmInfo[] internal farmInfo; // Store the every farmInfo
 	DepositInfo[] internal depositInfo; // Store the every deposit info by ERC20 token
@@ -268,22 +261,31 @@ contract Voting is ReentrancyGuard, Ownable {
 		_;
 	}
 
-	// Constructor
-	constructor(
+	/**
+	 * @dev sets initials
+	 */
+	function initialize(
 		address _hec,
 		address _sHec,
 		address _wsHec,
 		address _usdc,
 		SpookySwapFactory _spookySwapFactory,
 		SpookySwapRouter _spookySwapRouter
-	) {
-		HEC = IERC20(_hec);
-		sHEC = IERC20(_sHec);
+	) public initializer {
+		require(_hec != address(0x0));
+		require(_sHec != address(0x0));
+		require(_wsHec != address(0x0));
+		require(_usdc != address(0x0));
+		require(address(_spookySwapFactory) != address(0x0));
+		require(address(_spookySwapRouter) != address(0x0));
+		HEC = IERC20Upgradeable(_hec);
+		sHEC = IERC20Upgradeable(_sHec);
 		wsHec = wsHEC(_wsHec);
-		USDC = IERC20(_usdc);
+		USDC = IERC20Upgradeable(_usdc);
 		spookySwapFactory = _spookySwapFactory;
 		spookySwapRouter = _spookySwapRouter;
 		_owner = msg.sender;
+		__ReentrancyGuard_init_unchained();
 		emit OwnershipPulled(address(0), _owner);
 	}
 
@@ -404,7 +406,7 @@ contract Voting is ReentrancyGuard, Ownable {
 		address _owner,
 		LockFarm[] memory _farmVote,
 		uint256[] memory _weights,
-		IERC20 _stakingToken,
+		IERC20Upgradeable _stakingToken,
 		uint256 _amount,
 		FNFT _fnft,
 		uint256[] memory _fnftIds
@@ -481,14 +483,14 @@ contract Voting is ReentrancyGuard, Ownable {
 	}
 
 	// Withdraw the ERC20 token By User
-	function withdraw() external returns (IERC20[] memory _stakingTokens, uint256[] memory _amounts) {
+	function withdraw() external returns (IERC20Upgradeable[] memory _stakingTokens, uint256[] memory _amounts) {
 		address owner = address(msg.sender);
 		require(canWithdraw(owner), "Can't withdraw");
-		IERC20[] memory stakingTokens = new IERC20[](getFarmsLength());
+		IERC20Upgradeable[] memory stakingTokens = new IERC20Upgradeable[](getFarmsLength());
 		uint256[] memory amounts = new uint256[](getFarmsLength());
 		for (uint256 i = 0; i < getFarmsLength(); i++) {
 			LockFarm _lockFarm = getFarmsByIndex(i);
-			IERC20 _stakingToken = stakingToken[_lockFarm];
+			IERC20Upgradeable _stakingToken = stakingToken[_lockFarm];
 			stakingTokens[i] = _stakingToken;
 			uint256 totalAmount = 0;
 			for (uint256 j = 0; j < depositInfo.length; j++) {
@@ -582,7 +584,7 @@ contract Voting is ReentrancyGuard, Ownable {
 		uint256 erc20Balance = 0;
 
 		// Check FNFT Balance
-		IERC20 _stakingToken = stakingToken[_lockFarm];
+		IERC20Upgradeable _stakingToken = stakingToken[_lockFarm];
 		if (canVoteByERC20[_stakingToken]) {
 			uint256 userBalance = _stakingToken.balanceOf(owner);
 			erc20Balance += userBalance;
@@ -597,7 +599,7 @@ contract Voting is ReentrancyGuard, Ownable {
 
 	// Get weight for voting
 	function getWeightByUser(
-		IERC20 _stakingToken,
+		IERC20Upgradeable _stakingToken,
 		uint256 _amount,
 		FNFT _fnft,
 		uint256[] memory _fnftIds
@@ -609,7 +611,7 @@ contract Voting is ReentrancyGuard, Ownable {
 		if (address(_fnft) != address(0) && _fnftIds.length > 0) {
 			TokenVault _tokenValut = tokenVaultByFNFT[_fnft];
 			for (uint256 j = 0; j < _fnftIds.length; j++) {
-				IERC20 _erc20Token = IERC20(_tokenValut.getFNFT(_fnftIds[j]).asset);
+				IERC20Upgradeable _erc20Token = IERC20Upgradeable(_tokenValut.getFNFT(_fnftIds[j]).asset);
 				uint256 _lockedAmount = _tokenValut.getFNFT(_fnftIds[j]).depositAmount;
 				uint256 calcAmount = convertToHEC(address(_erc20Token), _lockedAmount);
 				weightByFNFT += calcAmount;
@@ -628,7 +630,7 @@ contract Voting is ReentrancyGuard, Ownable {
 		uint256 hecWeight = 0;
 		// Check LP token
 		SpookySwapPair _lpToken = SpookySwapPair(_stakingToken);
-		ERC20 _token = ERC20(_stakingToken);
+		ERC20Upgradeable _token = ERC20Upgradeable(_stakingToken);
 		if (address(lockFarmByERC20[_token]) != address(0) && compareStringsbyBytes(_token.symbol(), 'spLP') && _lpToken.factory() == address(spookySwapFactory)) {
 			// HEC-USDC
 			(uint256 reserve0, uint256 reserve1, ) = _lpToken.getReserves();
@@ -670,7 +672,7 @@ contract Voting is ReentrancyGuard, Ownable {
 			address _stakingToken = _tokenVault.getFNFT(tokenOfOwnerByIndex).asset;
 			uint256 _stakingAmount = _tokenVault.getFNFT(tokenOfOwnerByIndex).depositAmount;
 			uint256 time = block.timestamp - lastVoted;
-			IERC20 _stakingERC20Token = IERC20(_stakingToken);
+			IERC20Upgradeable _stakingERC20Token = IERC20Upgradeable(_stakingToken);
 			if (time > voteDelay && canVoteByERC20[_stakingERC20Token]) {
 				fnftInfos[i] = FNFTInfoByUser(tokenOfOwnerByIndex, _stakingToken, _stakingAmount);
 			}
@@ -704,7 +706,7 @@ contract Voting is ReentrancyGuard, Ownable {
 	function vote(
 		LockFarm[] calldata _farmVote,
 		uint256[] calldata _weights,
-		IERC20 _stakingToken,
+		IERC20Upgradeable _stakingToken,
 		uint256 _amount,
 		FNFT _fnft,
 		uint256[] memory _fnftIds
@@ -727,7 +729,7 @@ contract Voting is ReentrancyGuard, Ownable {
 	// Add new lock farm
 	function addLockFarmForOwner(
 		LockFarm _lockFarm,
-		IERC20 _stakingToken,
+		IERC20Upgradeable _stakingToken,
 		LockAddressRegistry _lockAddressRegistry,
 		TokenVault _tokenVault
 	) external onlyOwner returns (LockFarm) {
@@ -775,10 +777,10 @@ contract Voting is ReentrancyGuard, Ownable {
 		SpookySwapFactory _spookySwapFactory,
 		SpookySwapRouter _spookySwapRouter
 	) external onlyOwner {
-		HEC = IERC20(_hec);
-		sHEC = IERC20(_sHec);
+		HEC = IERC20Upgradeable(_hec);
+		sHEC = IERC20Upgradeable(_sHec);
 		wsHec = wsHEC(_wsHec);
-		USDC = IERC20(_usdc);
+		USDC = IERC20Upgradeable(_usdc);
 		spookySwapRouter = _spookySwapRouter;
 		spookySwapFactory = _spookySwapFactory;
 		emit SetConfiguration(msg.sender);
@@ -787,7 +789,7 @@ contract Voting is ReentrancyGuard, Ownable {
 	// Set LockFarm
 	function setLockFarm(
 		LockFarm _lockFarm,
-		IERC20 _stakingToken,
+		IERC20Upgradeable _stakingToken,
 		TokenVault _tokenVault,
 		LockAddressRegistry _lockAddressRegistry
 	) external onlyOwner {
@@ -822,7 +824,7 @@ contract Voting is ReentrancyGuard, Ownable {
 	}
 
 	// Set status of the ERC20 can participate in voting system by admin
-	function setStatusERC20(IERC20 _stakingToken, bool status) public onlyOwner returns (IERC20) {
+	function setStatusERC20(IERC20Upgradeable _stakingToken, bool status) public onlyOwner returns (IERC20Upgradeable) {
 		canVoteByERC20[_stakingToken] = status;
 		emit SetStatusERC20(_stakingToken, status);
 		return _stakingToken;
@@ -837,9 +839,9 @@ contract Voting is ReentrancyGuard, Ownable {
 	event SetMaxPercentageFarm(uint256 percentage, address admin);
 	event SetVoteDelay(uint256 voteDelay, address admin);
 	event SetStatusFNFT(FNFT farm, bool status);
-	event SetStatusERC20(IERC20 farm, bool status);
+	event SetStatusERC20(IERC20Upgradeable farm, bool status);
 	event Reset();
 	event ResetByOwner(address owner);
-	event Withdraw(IERC20[] stakingTokens, uint256[] amounts);
-	event SetLockFarm(address owner, LockFarm _lockFarm, IERC20 _stakingToken, TokenVault _tokenVault, LockAddressRegistry _lockAddressRegistry);
+	event Withdraw(IERC20Upgradeable[] stakingTokens, uint256[] amounts);
+	event SetLockFarm(address owner, LockFarm _lockFarm, IERC20Upgradeable _stakingToken, TokenVault _tokenVault, LockAddressRegistry _lockAddressRegistry);
 }
